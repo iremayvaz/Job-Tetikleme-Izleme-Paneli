@@ -233,6 +233,21 @@ def view_file():
         except Exception as e:
             st.error("Dosya konumu görüntülenemedi. Hata: " + str(e))
 
+def see_log():
+    st.subheader("Rapor Logları")
+
+    report_name = st.selectbox("Rapor Seçin", 
+                               options=fetch_report_definitions()["report_name"].unique().tolist())
+    
+    if report_name:
+        log_df = fetch_report_execution_log_by_name(report_name)
+        if not log_df.empty:
+            st.write(log_df)
+        else:
+            st.info("Bu rapor için henüz bir log bulunmamaktadır.")
+    else:
+        st.info("Lütfen bir rapor seçin.")
+
 def report_panel():
     st.title("Rapor Paneli")
     
@@ -246,7 +261,9 @@ else:
     report_panel()
     rep_def = fetch_report_definitions()
     rep_exec_log = fetch_report_execution_log()
+    
     trigger_job(rep_def)
+    see_log()
     download_file()
     view_file()
     
