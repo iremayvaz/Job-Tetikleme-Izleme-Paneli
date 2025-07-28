@@ -103,7 +103,6 @@ def do_login():
                 st.session_state.logged_in = True
                 st.session_state.user = data["user"]
                 st.success("Giriş başarılı! Hoş geldin, " + data["user"])
-                st.write("Streamlit version:", st.__version__)
                 st.rerun()
             else:
                 st.warning("Kullanıcı bulunamadı. Lütfen önce kayıt olun.")
@@ -127,7 +126,7 @@ def do_register():
             res.raise_for_status()
             data = res.json()
             
-            if data.get("can"):
+            if data.get("can") == "registered":
                 st.success("Kayıt başarılı! Lütfen giriş yapın.")
             else:
                 st.error("Kayıt başarısız: " + data.get("can", "already registered"))
@@ -173,7 +172,8 @@ def trigger_job(rep_def_df):
             report_payload = {
             "report_name":    row["report_name"],
             "period":         row["report_freq"],
-            "last_exec_date": last_exec_date
+            "last_exec_date": last_exec_date,
+            "executed_by":    st.session_state.user
             }
             
             try:
@@ -195,17 +195,19 @@ def trigger_job(rep_def_df):
 def download_file():
     st.subheader("Dökümanı İndir")
 
-    if st.session_state.file_path and st.session_state.report_ready:
+    if st.session_state.file_path:
         file_path = Path(st.session_state.file_path)
         if file_path.exists():
-            with open(file_path, "rb") as f:
-                st.download_button(
+            with open(file_path, "rb") as f: # rb : Read Binary
+                download_clicked = st.download_button(
                     label="Raporu İndir",
                     data=f,
                     file_name=file_path.name,
                     mime="application/octet-stream"
                 )
-            st.success("Rapor başarıyla indirildi!")
+            if download_clicked:
+                st.session_state.downloaded = True
+                st.success("Rapor başarıyla indirildi!")
         else:
             st.error("Rapor dosyası bulunamadı.")
     else:
@@ -216,7 +218,7 @@ def view_file():
 
     st.write(f"Dosya: `{st.session_state.file_path}`")
 
-    if st.button(label="Dökümanı Görüntüle") and st.session_state.file_path:
+    if st.button(label="Dökümanı Görüntüle") and st.session_state.file_path and st.session_state.report_ready and st.session_state.viewed is False:
         try:
             r = requests.post(
                 "http://localhost:5678/webhook/open-report-file",
@@ -233,8 +235,7 @@ def view_file():
 
 def report_panel():
     st.title("Rapor Paneli")
-    # … buraya rapor paneli bileşenlerinizi ekleyin …
-
+    
 # Uygulama akışı
 st.title("📊 Rapor Uygulaması")
 if not st.session_state.logged_in:
@@ -244,6 +245,8 @@ if not st.session_state.logged_in:
 else:
     report_panel()
     rep_def = fetch_report_definitions()
+    rep_exec_log = fetch_report_execution_log()
     trigger_job(rep_def)
-    view_file()
     download_file()
+    view_file()
+    
