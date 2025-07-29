@@ -165,14 +165,21 @@ def trigger_job():
     rep_def_df = fetch_report_definitions()
     
     gb = GridOptionsBuilder.from_dataframe(rep_def_df) 
+    gb.configure_column("report_name",    header_name="Job",        minWidth=150, maxWidth=200)
+    gb.configure_column("report_freq",  header_name="Sıklık",        minWidth=100, maxWidth=120)
+    gb.configure_column("last_exec_date", header_name="Son Çalıştırılma T.",   minWidth=200, maxWidth=250)
+
     gb.configure_selection(selection_mode="single", # sadece tek bir satır seçebilir
                            use_checkbox=True) # her satırın başı checkbox
+    
+    gb.configure_pagination(paginationAutoPageSize=True) # Sayfalama 
     grid_opts = gb.build()
 
     resp = AgGrid(
         rep_def_df,
         gridOptions=grid_opts,
         height=300,
+        width=200,
         update_mode=GridUpdateMode.SELECTION_CHANGED, # kullanıcı satır seçtiğinde tekrar çalışır
         theme="alpine"
     )
@@ -264,6 +271,7 @@ def view_file():
 
 
 def see_log(report_name=None):
+    '''
     #report_name = st.selectbox("Rapor Seçin", options=fetch_report_definitions()["report_name"].unique().tolist())
     
     if report_name:
@@ -274,6 +282,36 @@ def see_log(report_name=None):
             st.info("Bu rapor için henüz bir log bulunmamaktadır.")
     else:
         st.info("Lütfen bir rapor seçin.")
+    '''
+    log_df = fetch_report_execution_log_by_name(report_name)
+    if log_df.empty:
+        st.info("Bu rapor için henüz bir log bulunmamaktadır.")
+        return
+
+    # 2) GridOptionsBuilder ile kolon ayarlarını yap
+    gb = GridOptionsBuilder.from_dataframe(log_df)
+    # İstediğin kolon genişliklerini buradan ayarla:
+    gb.configure_column("report_name", header_name="Job",          width=100)
+    gb.configure_column("run_date",    header_name="Tarih",        width=150)
+    gb.configure_column("run_status",  header_name="Durum",        width=100)
+    gb.configure_column("executed_by", header_name="Çalıştıran",   minWidth=200, maxWidth=250)
+    gb.configure_column("file_path",   header_name="Dosya Yolu",   minWidth=400, maxWidth=600)
+    # Sayfalama ekleyebilirsin:
+    gb.configure_pagination(paginationAutoPageSize=True)
+    # Seçim gibi bir özelliğe gerek yoksa pas geç:
+    grid_options = gb.build()
+
+    # 3) AgGrid ile ekrana bas
+    AgGrid(
+        log_df,
+        gridOptions=grid_options,
+        theme="alpine",
+        height=500,
+        width=500,
+        fit_columns_on_grid_load=True,
+        enable_enterprise_modules=False,
+        update_mode=GridUpdateMode.NO_UPDATE,
+    )
 
 def send_file_by_email(report_name, file_path, to_email): # E-posta göndermek için
     try:
@@ -331,13 +369,18 @@ st.markdown("---")
 # Sayfayı iki eşit sütuna bölüyoruz
 col1, col2 = st.columns([1, 1])
 
-if not st.session_state.logged_in:
-    with col1:
-        do_login()
-    
-    with col2:
+if not st.session_state.logged_in: # Kullanıcı giriş yapmadıysa
+    with col1: # sayfanın solu
         do_register()
-else:
+    
+    with col2: # sayfanın sağı
+        do_login()
+
+else: # Kullanıcı giriş yaptıysa
+    
+    # Sayfa bölünmesini güncelliyoruz
+    col1, col2 = st.columns([1, 2])
+
     with col1:
         trigger_job()
         download_file()
