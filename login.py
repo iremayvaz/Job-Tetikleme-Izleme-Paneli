@@ -26,6 +26,9 @@ if "viewed" not in st.session_state:
 # Session state ile indirilme durumunu takip edin
 if "downloaded" not in st.session_state:
     st.session_state.downloaded = False
+# Session state ile indirilme durumunu takip edin
+if "was_send" not in st.session_state:
+    st.session_state.was_send = False
 
 def get_connection(): # SQL Server’a doğrudan bağlanmak için
     return pymssql.connect( 
@@ -231,6 +234,7 @@ def download_file():
                     file_name=Path(file_path).name,
                     mime="application/octet-stream"
                 ):
+                    st.session_state.downloaded = True
                     st.success("Rapor başarıyla indirildi!")
         else:
             st.error("Rapor dosyası bulunamadı.")
@@ -278,6 +282,48 @@ def see_log(report_name=None):
     else:
         st.info("Lütfen bir rapor seçin.")
 
+def send_file_by_email(report_name, file_path, to_email): # E-posta göndermek için
+    try:
+        payload = {
+            "report_name": report_name,
+            "file_path": file_path,
+            "to_email": to_email
+        }
+        
+        r = requests.post(
+            "http://localhost:5678/webhook/send-file-by-email",
+            json=payload,
+            timeout=10
+        )
+
+        r.raise_for_status()
+        data = r.json()
+
+        if data["status"] == "gönderildi":
+            st.success(f"Dosya {to_email}'e {data["status"]}.")
+        elif data["status"] == "hatalı":
+            st.error(f"{to_email}   .")
+    except Exception as e:
+        st.error("Mail gönderilemedi. Hata: " + str(e))
+
+def send_mail():
+    st.subheader("E-posta Gönder")
+
+    if st.session_state.selected_row["report_name"]:
+        file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
+        if file_path:
+            if st.button(label="E-postayı Gönder",
+                         on_click=send_file_by_email,
+                         args=(st.session_state.selected_row["report_name"], 
+                               file_path, 
+                               st.session_state.user,)):
+                st.session_state.was_send = True
+            
+        else:
+            st.error("Rapor dosyası bulunamadı.")
+    else:
+        st.info("Henüz bir rapor oluşturulmadı.")
+
 def report_panel():
     st.title("Rapor Paneli")
     
@@ -295,4 +341,5 @@ else:
     see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
     download_file()
     view_file()
+    send_mail()
     
