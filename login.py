@@ -89,8 +89,7 @@ def fetch_report_execution_log_by_name(report_name): # Rapor loglarını rapor a
     conn.close()
     return rep_log_by_name
 
-def fetch_latest_file_path(report_name):
-    # sadece en son başarılı (run_status=1) satırı getir
+def fetch_latest_file_path(report_name): # En sonki başarılı rapor dosyasının yolunu çekmek için
     conn = get_connection()
     df = pd.read_sql(
         """
@@ -131,6 +130,8 @@ def do_login():
                 st.success("Giriş başarılı! Hoş geldin, " + data["user"])
                 time.sleep(0.5) # Giriş başarılı mesajını göstermek için kısa bir bekleme
                 st.rerun()
+            elif data.get("canLogin") == "wrong password":
+                st.error( data["user"] + " için hatalı şifre. Lütfen tekrar deneyin.")
             else:
                 st.warning("Kullanıcı bulunamadı. Lütfen önce kayıt olun.")
         except Exception as e:
@@ -161,14 +162,12 @@ def do_register():
             st.error(f"Kayıt hatası: {e}")
 
 def trigger_job():
-    st.subheader("Job Tetikle")
-    
     rep_def_df = fetch_report_definitions()
     
-    gb = GridOptionsBuilder.from_dataframe(rep_def_df) # DataFrame’den bir grid ayarları (options) nesnesi oluşturur
+    gb = GridOptionsBuilder.from_dataframe(rep_def_df) 
     gb.configure_selection(selection_mode="single", # sadece tek bir satır seçebilir
-                       use_checkbox=True) # her satırın başı checkbox
-    grid_opts = gb.build() # GridOptionsBuilder ile oluşturulan grid ayarlarını kullanarak bir AgGrid bileşeni oluşturur.
+                           use_checkbox=True) # her satırın başı checkbox
+    grid_opts = gb.build()
 
     resp = AgGrid(
         rep_def_df,
@@ -180,10 +179,10 @@ def trigger_job():
 
     selected_data = resp.get("selected_data")
     
-    if (selected_data is None or len(selected_data) == 0):
+    if (selected_data is None or len(selected_data) == 0): # Seçim yapılmadıysa
         st.info("Lütfen bir satır seçin.")
         st.stop()
-    else:
+    else: # Seçim yapıldıysa
         row = selected_data.iloc[0]
         st.session_state.selected_row = row
 
@@ -199,10 +198,10 @@ def trigger_job():
         
         if st.button("Job Tetikle"):
             report_payload = {
-            "report_name":    row["report_name"],
-            "period":         row["report_freq"],
+            "report_name"   : row["report_name"],
+            "period"        : row["report_freq"],
             "last_exec_date": last_exec_date,
-            "executed_by":    st.session_state.user
+            "executed_by"   : st.session_state.user
             }
             
             try:
@@ -222,8 +221,6 @@ def trigger_job():
     
 
 def download_file():
-    st.subheader("Dökümanı İndir")
-
     if st.session_state.selected_row["report_name"]:
         file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
         if file_path and Path(file_path).exists():
@@ -257,20 +254,16 @@ def open_report_file(payload): # Dökümanı görüntülemek için
         st.error("Dosya konumu görüntülenemedi. Hata: " + str(e))
 
 def view_file():
-    st.subheader("Dökümanı Görüntüle")
-
-    if st.session_state.selected_row["report_name"]:
+   if st.session_state.selected_row["report_name"]:
         file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
         if file_path:
             if st.button(label="Dökümanı Görüntüle", 
-              on_click=open_report_file, 
-              args=(file_path,)):
+                         on_click=open_report_file, 
+                         args=(file_path,)):
                 st.session_state.viewed = True
 
 
 def see_log(report_name=None):
-    st.subheader("Rapor Logları")
-
     #report_name = st.selectbox("Rapor Seçin", options=fetch_report_definitions()["report_name"].unique().tolist())
     
     if report_name:
@@ -286,8 +279,8 @@ def send_file_by_email(report_name, file_path, to_email): # E-posta göndermek i
     try:
         payload = {
             "report_name": report_name,
-            "file_path": file_path,
-            "to_email": to_email
+            "file_path"  : file_path,
+            "to_email"   : to_email
         }
         
         r = requests.post(
@@ -307,8 +300,6 @@ def send_file_by_email(report_name, file_path, to_email): # E-posta göndermek i
         st.error("Mail gönderilemedi. Hata: " + str(e))
 
 def send_mail():
-    st.subheader("E-posta Gönder")
-
     if st.session_state.selected_row["report_name"]:
         file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
         if file_path:
@@ -328,18 +319,31 @@ def report_panel():
     st.title("Rapor Paneli")
     
 # Uygulama akışı
-st.title("📊 Rapor Uygulaması")
+st.set_page_config(
+    page_title="Rapor Uygulaması",
+    layout="wide",                # <— işte geniş düzen
+    initial_sidebar_state="auto"  # isterseniz “expanded” da yapabilirsiniz
+)
+
+report_panel()  
+st.markdown("---")
+
+# Sayfayı iki eşit sütuna bölüyoruz
+col1, col2 = st.columns([1, 1])
+
 if not st.session_state.logged_in:
-    do_login()
-    st.markdown("---")
-    do_register()
+    with col1:
+        do_login()
+    
+    with col2:
+        do_register()
 else:
-    report_panel()
-    
-    
-    trigger_job()
-    see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
-    download_file()
-    view_file()
-    send_mail()
+    with col1:
+        trigger_job()
+        download_file()
+        view_file()
+        send_mail()
+    with col2:
+        see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
+        
     
