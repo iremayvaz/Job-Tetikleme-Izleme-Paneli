@@ -5,6 +5,7 @@ import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from pathlib import Path
 from datetime import datetime
+import time
 
 # Session state ile login durumunu takip edin
 if "logged_in" not in st.session_state:
@@ -73,7 +74,8 @@ def fetch_report_execution_log_by_name(report_name): # Rapor loglarını rapor a
         rep_def.report_name,
         rep_log.run_date,
         rep_log.run_status,
-        rep_log.executed_by
+        rep_log.executed_by,
+        rep_log.file_path
         FROM dbo.ReportExecutionLog AS rep_log
         INNER JOIN dbo.ReportDefinition AS rep_def
             ON rep_log.report_id = rep_def.report_id
@@ -83,6 +85,27 @@ def fetch_report_execution_log_by_name(report_name): # Rapor loglarını rapor a
         conn, params=(report_name,))
     conn.close()
     return rep_log_by_name
+
+def fetch_latest_file_path(report_name):
+    # sadece en son başarılı (run_status=1) satırı getir
+    conn = get_connection()
+    df = pd.read_sql(
+        """
+        SELECT 
+        TOP 1 rep_log.file_path
+        FROM dbo.ReportExecutionLog AS rep_log
+        INNER JOIN dbo.ReportDefinition AS rep_def
+            ON rep_log.report_id = rep_def.report_id
+        WHERE rep_def.report_name = %s
+          AND rep_log.run_status = 1
+          AND rep_log.file_path IS NOT NULL
+        ORDER BY rep_log.run_date DESC
+        """,
+        conn,
+        params=(report_name,),
+    )
+    conn.close()
+    return df["file_path"].iloc[0] if not df.empty else None
 
 def do_login():
     st.subheader("Giriş Yap")
@@ -103,6 +126,7 @@ def do_login():
                 st.session_state.logged_in = True
                 st.session_state.user = data["user"]
                 st.success("Giriş başarılı! Hoş geldin, " + data["user"])
+                time.sleep(0.5) # Giriş başarılı mesajını göstermek için kısa bir bekleme
                 st.rerun()
             else:
                 st.warning("Kullanıcı bulunamadı. Lütfen önce kayıt olun.")
@@ -133,9 +157,11 @@ def do_register():
         except Exception as e:
             st.error(f"Kayıt hatası: {e}")
 
-def trigger_job(rep_def_df):
+def trigger_job():
     st.subheader("Job Tetikle")
-
+    
+    rep_def_df = fetch_report_definitions()
+    
     gb = GridOptionsBuilder.from_dataframe(rep_def_df) # DataFrame’den bir grid ayarları (options) nesnesi oluşturur
     gb.configure_selection(selection_mode="single", # sadece tek bir satır seçebilir
                        use_checkbox=True) # her satırın başı checkbox
@@ -195,44 +221,49 @@ def trigger_job(rep_def_df):
 def download_file():
     st.subheader("Dökümanı İndir")
 
-    if st.session_state.file_path:
+    if st.session_state.file_path and st.session_state.report_ready:
         file_path = Path(st.session_state.file_path)
         if file_path.exists():
-            with open(file_path, "rb") as f: # rb : Read Binary
-                download_clicked = st.download_button(
-                    label="Raporu İndir",
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    label="Dökümanı İndir",
                     data=f,
                     file_name=file_path.name,
                     mime="application/octet-stream"
                 )
-            if download_clicked:
-                st.session_state.downloaded = True
-                st.success("Rapor başarıyla indirildi!")
+            st.success("Rapor başarıyla indirildi!")
         else:
             st.error("Rapor dosyası bulunamadı.")
     else:
-        st.info("Henüz bir rapor oluşturulmadı.")
+        st.info("Henüz bir rapor oluşturulmadı.") 
+
+def open_report_file(payload): # Dökümanı görüntülemek için
+    try:
+        r = requests.post(
+            "http://localhost:5678/webhook/open-report-file",
+            json=payload,
+            timeout=10
+        )
+
+        r.raise_for_status()
+        data = r.json()
+
+        st.success(f"Dosya konumu {data["status"]}.")
+    except Exception as e:
+        st.error("Dosya konumu görüntülenemedi. Hata: " + str(e))
 
 def view_file():
     st.subheader("Dökümanı Görüntüle")
 
-    st.write(f"Dosya: `{st.session_state.file_path}`")
+    if st.session_state.selected_row["report_name"]:
+        file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
+        if file_path:
+            if st.button(label="Dökümanı Görüntüle", 
+              on_click=open_report_file, 
+              args=(file_path,)):
+                st.session_state.viewed = True
 
-    if st.button(label="Dökümanı Görüntüle") and st.session_state.file_path and st.session_state.report_ready and st.session_state.viewed is False:
-        try:
-            r = requests.post(
-                "http://localhost:5678/webhook/open-report-file",
-                json={"file_path": st.session_state.file_path},
-                timeout=10
-            )
-
-            r.raise_for_status()
-            data = r.json()
-
-            st.success(f"Dosya konumu {data["status"]}.")
-        except Exception as e:
-            st.error("Dosya konumu görüntülenemedi. Hata: " + str(e))
-
+                
 def see_log(report_name=None):
     st.subheader("Rapor Logları")
 
@@ -258,10 +289,9 @@ if not st.session_state.logged_in:
     do_register()
 else:
     report_panel()
-    rep_def = fetch_report_definitions()
-    rep_exec_log = fetch_report_execution_log()
     
-    trigger_job(rep_def)
+    
+    trigger_job()
     see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
     download_file()
     view_file()
