@@ -26,7 +26,7 @@ if "viewed" not in st.session_state:
 # Session state ile indirilme durumunu takip edin
 if "downloaded" not in st.session_state:
     st.session_state.downloaded = False
-# Session state ile indirilme durumunu takip edin
+# Session state ile mail gönderilme durumunu takip edin
 if "was_send" not in st.session_state:
     st.session_state.was_send = False
 
