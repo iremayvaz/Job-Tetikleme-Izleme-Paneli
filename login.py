@@ -221,17 +221,17 @@ def trigger_job():
 def download_file():
     st.subheader("Dökümanı İndir")
 
-    if st.session_state.file_path and st.session_state.report_ready:
-        file_path = Path(st.session_state.file_path)
-        if file_path.exists():
+    if st.session_state.selected_row["report_name"]:
+        file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
+        if file_path and Path(file_path).exists():
             with open(file_path, "rb") as f:
-                st.download_button(
+                if st.download_button(
                     label="Dökümanı İndir",
                     data=f,
-                    file_name=file_path.name,
+                    file_name=Path(file_path).name,
                     mime="application/octet-stream"
-                )
-            st.success("Rapor başarıyla indirildi!")
+                ):
+                    st.success("Rapor başarıyla indirildi!")
         else:
             st.error("Rapor dosyası bulunamadı.")
     else:
@@ -263,7 +263,7 @@ def view_file():
               args=(file_path,)):
                 st.session_state.viewed = True
 
-                
+
 def see_log(report_name=None):
     st.subheader("Rapor Logları")
 
