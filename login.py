@@ -7,6 +7,12 @@ from pathlib import Path
 from datetime import datetime
 import time
 
+st.set_page_config(
+    page_title="Rapor Uygulaması",
+    layout="wide",                # <— işte geniş düzen
+    initial_sidebar_state="auto"  # isterseniz “expanded” da yapabilirsiniz
+)
+
 # Session state ile login durumunu takip edin
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -156,6 +162,8 @@ def do_register():
             
             if data.get("can") == "registered":
                 st.success("Kayıt başarılı! Lütfen giriş yapın.")
+            elif data.get("can") == "GEÇERSİZ EMAIL":
+                st.error("Lütfen geçerli bir e-posta adresi girin.")
             else:
                 st.error("Kayıt başarısız: " + data.get("can", "already registered"))
         except Exception as e:
@@ -178,8 +186,8 @@ def trigger_job():
     resp = AgGrid(
         rep_def_df,
         gridOptions=grid_opts,
-        height=300,
-        width=200,
+        height=500,
+        width=300,
         update_mode=GridUpdateMode.SELECTION_CHANGED, # kullanıcı satır seçtiğinde tekrar çalışır
         theme="alpine"
     )
@@ -197,34 +205,38 @@ def trigger_job():
         dt = datetime.fromisoformat(raw_date)
         last_exec_date = dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        st.write("Seçili Rapor:", row["report_name"])
-        st.write("Son Raporlanma tarihi:", last_exec_date)
+        b1, b2 = st.columns([3, 1])
 
-        freq = row.get("report_freq", "")
-        st.write("**Raporlanma Sıklığı:**", "Günlük" if freq=="daily" else "Aylık" if freq=="monthly" else freq)
+        with b1:
+            st.write("Seçili Rapor:", row["report_name"])
+            st.write("Son Raporlanma tarihi:", last_exec_date)
+
+            freq = row.get("report_freq", "")
+            st.write("**Raporlanma Sıklığı:**", "Günlük" if freq=="daily" else "Aylık" if freq=="monthly" else freq)
         
-        if st.button("Job Tetikle"):
-            report_payload = {
-            "report_name"   : row["report_name"],
-            "period"        : row["report_freq"],
-            "last_exec_date": last_exec_date,
-            "executed_by"   : st.session_state.user
-            }
+        with b2:
+            if st.button(label="Job Tetikle", use_container_width=True):
+                report_payload = {
+                "report_name"   : row["report_name"],
+                "period"        : row["report_freq"],
+                "last_exec_date": last_exec_date,
+                "executed_by"   : st.session_state.user
+                }
             
-            try:
-                res = requests.post("http://localhost:5678/webhook/trigger-job", 
-                                    json=report_payload, timeout=10)
-                res.raise_for_status()
-                data = res.json()
+                try:
+                    res = requests.post("http://localhost:5678/webhook/trigger-job", 
+                                        json=report_payload, timeout=10)
+                    res.raise_for_status()
+                    data = res.json()
             
-                if data.get("file_path"):
-                    st.session_state.file_path = data.get("file_path")
-                    st.session_state.report_ready = True
-                    st.success("Raporlama başarılı!")
-                else:
-                    st.error("Raporlama başarısız: " + st.session_state.selected_row["report_name"])
-            except Exception as e:
-                st.error(f"Raporlama hatası: {e}")
+                    if data.get("file_path"):
+                        st.session_state.file_path = data.get("file_path")
+                        st.session_state.report_ready = True
+                        st.success("Raporlama başarılı!")
+                    else:
+                        st.error("Raporlama başarısız: " + st.session_state.selected_row["report_name"])
+                except Exception as e:
+                    st.error(f"Raporlama hatası: {e}")
     
 
 def download_file():
@@ -236,7 +248,8 @@ def download_file():
                     label="Dökümanı İndir",
                     data=f,
                     file_name=Path(file_path).name,
-                    mime="application/octet-stream"
+                    mime="application/octet-stream",
+                    use_container_width=True
                 ):
                     st.session_state.downloaded = True
                     st.success("Rapor başarıyla indirildi!")
@@ -266,7 +279,8 @@ def view_file():
         if file_path:
             if st.button(label="Dökümanı Görüntüle", 
                          on_click=open_report_file, 
-                         args=(file_path,)):
+                         args=(file_path,),
+                         use_container_width=True):
                 st.session_state.viewed = True
 
 
@@ -306,7 +320,7 @@ def see_log(report_name=None):
         log_df,
         gridOptions=grid_options,
         theme="alpine",
-        height=500,
+        height=685,
         width=500,
         fit_columns_on_grid_load=True,
         enable_enterprise_modules=False,
@@ -345,7 +359,8 @@ def send_mail():
                          on_click=send_file_by_email,
                          args=(st.session_state.selected_row["report_name"], 
                                file_path, 
-                               st.session_state.user,)):
+                               st.session_state.user,),
+                         use_container_width=True):
                 st.session_state.was_send = True
             
         else:
@@ -353,15 +368,9 @@ def send_mail():
     else:
         st.info("Henüz bir rapor oluşturulmadı.")
 
+# Uygulama akışı
 def report_panel():
     st.title("Rapor Paneli")
-    
-# Uygulama akışı
-st.set_page_config(
-    page_title="Rapor Uygulaması",
-    layout="wide",                # <— işte geniş düzen
-    initial_sidebar_state="auto"  # isterseniz “expanded” da yapabilirsiniz
-)
 
 report_panel()  
 st.markdown("---")
@@ -383,9 +392,18 @@ else: # Kullanıcı giriş yaptıysa
 
     with col1:
         trigger_job()
-        download_file()
-        view_file()
-        send_mail()
+
+        b1, b2, b3 = st.columns(3)
+
+        with b1:
+            download_file()
+        
+        with b2:
+            view_file()
+        with b3:
+            send_mail()
+    
+    
     with col2:
         see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
         
