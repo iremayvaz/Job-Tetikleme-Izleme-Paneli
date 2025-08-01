@@ -178,14 +178,7 @@ def do_register(): # Yeni kullanıcı kayıt
 
 def do_logout(): # Kullanıcı çıkış
     if st.button("Çıkış Yap"):
-        st.session_state.logged_in = False
-        st.session_state.user = None
-        st.session_state.selected_row = None
-        st.session_state.file_path = None
-        st.session_state.report_ready = False
-        st.session_state.viewed = False
-        st.session_state.downloaded = False
-        st.session_state.was_send = False
+        st.session_state.clear() # Tüm session state değerlerini temizler
         st.success("Çıkış başarılı! Yeniden giriş yapabilirsiniz.")
         time.sleep(0.5) # Çıkış başarılı mesajını göstermek için kısa bir bekleme
         st.rerun()
@@ -213,6 +206,12 @@ def trigger_job(): # Job tetikleme
         update_mode=GridUpdateMode.SELECTION_CHANGED, # kullanıcı satır seçtiğinde tekrar çalışır
         theme="balham"
     )
+
+    # Yeni seçim yapıldığında önceki seçimleri temizler
+    for k in ["report_ready","viewed","downloaded","was_send"]:
+        st.session_state.pop(k, None)
+
+    st.session_state.file_path = None
 
     selected_data = resp.get("selected_data")
     
