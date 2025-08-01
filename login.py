@@ -7,32 +7,36 @@ from pathlib import Path
 from datetime import datetime
 import time
 
-st.set_page_config(
+st.set_page_config( # Genel sayfa düzeni 
     page_title="Rapor Uygulaması",
-    layout="wide",                
-    initial_sidebar_state="auto"  
+    layout="wide",                  # sayfayı yataya genişletir
+    initial_sidebar_state="auto"    # yan panel kullanılırsa otomatik olarak açılır
 )
 
-# Session state ile login durumunu takip edin
+# Her butona basıldığında script baştan çalışır
+# Bu yüzden session state kullanarak bazı değerleri saklarız
+# Böylece sayfa yeniden yüklendiğinde bu değerler kaybolmaz
+
+# Session state ile login durum takip
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
-# Session state ile selected_row durumunu takip edin
+# Session state ile selected_row durum takip
 if "selected_row" not in st.session_state:
     st.session_state.selected_row = None
-# Session state ile file_path durumunu takip edin
+# Session state ile file_path durum takip
 if "file_path" not in st.session_state:
     st.session_state.file_path = None
-# Session state ile rapor durumunu takip edin
+# Session state ile rapor durum takip
 if "report_ready" not in st.session_state:
     st.session_state.report_ready = False
-# Session state ile görüntülenme durumunu takip edin
+# Session state ile görüntülenme durum takip
 if "viewed" not in st.session_state:
     st.session_state.viewed = False
-# Session state ile indirilme durumunu takip edin
+# Session state ile indirilme durum takip
 if "downloaded" not in st.session_state:
     st.session_state.downloaded = False
-# Session state ile mail gönderilme durumunu takip edin
+# Session state ile mail gönderilme durum takip
 if "was_send" not in st.session_state:
     st.session_state.was_send = False
 
@@ -56,26 +60,6 @@ def fetch_report_definitions(): # Rapor tanımlarını çekmek için
         conn)
     conn.close()
     return rep_def
-
-def fetch_report_execution_log(): # Rapor loglarını çekmek için
-    conn = get_connection()
-    rep_log = pd.read_sql( 
-        """
-        SELECT
-        rep_def.report_name,
-        rep_log.run_date,
-        rep_log.reporting_date,
-        rep_log.run_time_seconds,
-        rep_log.run_status,
-        rep_log.executed_by
-        FROM dbo.ReportExecutionLog AS rep_log
-        INNER JOIN dbo.ReportDefinition AS rep_def
-            ON rep_log.report_id = rep_def.report_id
-        ORDER BY rep_log.run_date DESC
-        """, 
-        conn)
-    conn.close()
-    return rep_log
 
 def fetch_report_execution_log_by_name(report_name): # Rapor loglarını rapor adına göre çekmek için
     conn = get_connection()
@@ -121,18 +105,16 @@ def fetch_latest_file_path(report_name): # En sonki başarılı rapor dosyasın�
 
 def seconds_to_hhmmss(sec: int) -> str: # Veri tabanındaki run_time_seconds'ı saat ve dakikaya dönüştürmek için
     try:
-        sec = int(sec)
-
-        if sec <= 0: # sec is None or
-            return "00:00:00"  # Eğer süre yoksa veya negatifse, 00:00:00 döndürür
+        if sec <= 0: # Eğer süre 0 veya negatifse, 00:00:00 döndürür
+            return "00:00:00" 
         elif sec >= 3600: # Eğer süre 1 saatten fazlaysa
-            h = sec // 3600 # 18432 / 3600 = 5 saat
-            m = (sec % 3600) // 60 # 18432 % 3600 = 432 saniye, 432 // 60 = 7 dakika
-            s = sec % 60 # 432 % 60 = 12 saniye
+            h = sec // 3600 # 18432s / 3600s = 5 saat
+            m = (sec % 3600) // 60 # 18432s % 3600s = 432 saniye, 432s // 60s = 7 dakika
+            s = sec % 60 # 432s % 60s = 12 saniye
             return f"{h:02d}:{m:02d}:{s:02d}" # 05:07:12 formatında döndürür
         elif sec >= 60 and sec < 3600: # Eğer süre 1 dakikadan fazlaysa
-            m = (sec % 3600) // 60 # 18432 % 3600 = 432 saniye, 432 // 60 = 7 dakika
-            s = sec % 60 # 432 % 60 = 12 saniye
+            m = (sec % 3600) // 60 # 18432s % 3600s = 432 saniye, 432s // 60s = 7 dakika
+            s = sec % 60 # 432s % 60s = 12 saniye
             return f"00:{m:02d}:{s:02d}" # 00:07:12 formatında döndürür
         else: # Eğer süre 1 dakikadan azsa
             return f"00:00:{sec:02d}" # 00:00:12 formatında döndürür
@@ -140,7 +122,7 @@ def seconds_to_hhmmss(sec: int) -> str: # Veri tabanındaki run_time_seconds'ı 
     except (TypeError, ValueError): # Eğer sec None veya geçersiz bir değer ise
         return "--"
 
-def do_login():
+def do_login(): # Kullanıcı giriş
     st.subheader("Giriş Yap")
 
     email = st.text_input("E-posta", key="login_email")
@@ -150,7 +132,7 @@ def do_login():
         payload = {"executed_by": email, 
                    "password": password}
         try:
-            res = requests.post("http://localhost:5678/webhook/login", 
+            res = requests.post("http://localhost:5678/webhook/login", # n8n workflow tetikleme
                                 json=payload, timeout=10)
             res.raise_for_status()
             data = res.json()
@@ -168,7 +150,7 @@ def do_login():
         except Exception as e:
             st.error(f"Giriş hatası: {e}")
 
-def do_register():
+def do_register(): # Yeni kullanıcı kayıt
     st.subheader("Kayıt Ol")
     
     email = st.text_input("E-posta", key="reg_email")
@@ -180,7 +162,7 @@ def do_register():
                    "password": password, 
                    "position": unvan}
         try:
-            res = requests.post("http://localhost:5678/webhook/register", 
+            res = requests.post("http://localhost:5678/webhook/register", # n8n workflow tetikleme
                                 json=payload, timeout=10)
             res.raise_for_status()
             data = res.json()
@@ -194,13 +176,28 @@ def do_register():
         except Exception as e:
             st.error(f"Kayıt hatası: {e}")
 
-def trigger_job():
+def do_logout(): # Kullanıcı çıkış
+    if st.button("Çıkış Yap"):
+        st.session_state.logged_in = False
+        st.session_state.user = None
+        st.session_state.selected_row = None
+        st.session_state.file_path = None
+        st.session_state.report_ready = False
+        st.session_state.viewed = False
+        st.session_state.downloaded = False
+        st.session_state.was_send = False
+        st.success("Çıkış başarılı! Yeniden giriş yapabilirsiniz.")
+        time.sleep(0.5) # Çıkış başarılı mesajını göstermek için kısa bir bekleme
+        st.rerun()
+
+def trigger_job(): # Job tetikleme
     rep_def_df = fetch_report_definitions()
     
     gb = GridOptionsBuilder.from_dataframe(rep_def_df) 
-    gb.configure_column("report_name",    header_name="Job",        minWidth=150, maxWidth=200)
-    gb.configure_column("report_freq",  header_name="Sıklık",        minWidth=100, maxWidth=120)
-    gb.configure_column("last_exec_date", header_name="Son Çalıştırılma T.",   minWidth=200, maxWidth=250)
+
+    gb.configure_column("report_name",      header_name="Job",                  minWidth=150, maxWidth=200)
+    gb.configure_column("report_freq",      header_name="Sıklık",               minWidth=100, maxWidth=120)
+    gb.configure_column("last_exec_date",   header_name="Son Çalıştırılma T.",  minWidth=200, maxWidth=250)
 
     gb.configure_selection(selection_mode="single", # sadece tek bir satır seçebilir
                            use_checkbox=True) # her satırın başı checkbox
@@ -214,7 +211,7 @@ def trigger_job():
         height=500,
         width="%100",
         update_mode=GridUpdateMode.SELECTION_CHANGED, # kullanıcı satır seçtiğinde tekrar çalışır
-        theme="alpine"
+        theme="balham"
     )
 
     selected_data = resp.get("selected_data")
@@ -233,8 +230,8 @@ def trigger_job():
         b1, b2 = st.columns([3, 1])
 
         with b1:
-            st.write("Seçili Rapor:", row["report_name"])
-            st.write("Son Raporlanma tarihi:", last_exec_date)
+            st.write("**Seçili Rapor:**", row["report_name"])
+            st.write("**Son Raporlanma tarihi:**", last_exec_date)
 
             freq = row.get("report_freq", "")
             st.write("**Raporlanma Sıklığı:**", "Günlük" if freq=="daily" else "Aylık" if freq=="monthly" else freq)
@@ -249,7 +246,7 @@ def trigger_job():
                 }
             
                 try:
-                    res = requests.post("http://localhost:5678/webhook/trigger-job", 
+                    res = requests.post("http://localhost:5678/webhook/trigger-job", # n8n workflow tetikleme
                                         json=report_payload, timeout=10)
                     res.raise_for_status()
                     data = res.json()
@@ -262,54 +259,8 @@ def trigger_job():
                         st.error("Raporlama başarısız: " + st.session_state.selected_row["report_name"])
                 except Exception as e:
                     st.error(f"Raporlama hatası: {e}")
-    
 
-def download_file():
-    if st.session_state.selected_row["report_name"]:
-        file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
-        if file_path and Path(file_path).exists():
-            with open(file_path, "rb") as f:
-                if st.download_button(
-                    label="Dökümanı İndir",
-                    data=f,
-                    file_name=Path(file_path).name,
-                    mime="application/octet-stream",
-                    use_container_width=True
-                ):
-                    st.session_state.downloaded = True
-                    st.success("Rapor başarıyla indirildi!")
-        else:
-            st.error("Rapor dosyası bulunamadı.")
-    else:
-        st.info("Henüz bir rapor oluşturulmadı.") 
-
-def open_report_file(payload): # Dökümanı görüntülemek için
-    try:
-        r = requests.post(
-            "http://localhost:5678/webhook/open-report-file",
-            json=payload,
-            timeout=10
-        )
-
-        r.raise_for_status()
-        data = r.json()
-
-        st.success(f"Dosya konumu {data["status"]}.")
-    except Exception as e:
-        st.error("Dosya konumu görüntülenemedi. Hata: " + str(e))
-
-def view_file():
-   if st.session_state.selected_row["report_name"]:
-        file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
-        if file_path:
-            if st.button(label="Dökümanı Görüntüle", 
-                         on_click=open_report_file, 
-                         args=(file_path,),
-                         use_container_width=True):
-                st.session_state.viewed = True
-
-
-def see_log(report_name=None):
+def see_log(report_name=None): # Seçilen Job'ın loglarını görüntüleme
     log_df = fetch_report_execution_log_by_name(report_name)
 
     if log_df.empty: # Log kaydı yoksa
@@ -317,10 +268,11 @@ def see_log(report_name=None):
         return
     
     #  Reporting_date kolonu sonradan eklendiği için
+    #  NaT değerler var
     #  NaT'leri boş string yapar
     log_df["reporting_date"] = (
         log_df["reporting_date"]
-          .dt.strftime("%d/%m/%Y %H:%M:%S")
+          .dt.strftime("%d/%m/%Y %H:%M")
           .fillna("--")                        
     ) 
 
@@ -344,7 +296,7 @@ def see_log(report_name=None):
     AgGrid(
         log_df,
         gridOptions=grid_options,
-        theme="alpine",
+        theme="balham",
         height=685,
         width="%100",
         fit_columns_on_grid_load=True,
@@ -352,7 +304,52 @@ def see_log(report_name=None):
         update_mode=GridUpdateMode.NO_UPDATE,
     )
 
-def send_file_by_email(report_name, file_path, to_email): # E-posta göndermek için
+def download_file(): # Dökümanı indirme
+    if st.session_state.selected_row["report_name"]:
+        file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
+        if file_path and Path(file_path).exists():
+            with open(file_path, "rb") as f: # Dosyayı okur (ReadBinary)
+                if st.download_button(
+                    label="Dökümanı İndir",
+                    data=f,
+                    file_name=Path(file_path).name,
+                    mime="application/octet-stream",
+                    use_container_width=True
+                ):
+                    st.session_state.downloaded = True
+                    st.success("Rapor başarıyla indirildi!")
+        else:
+            st.error("Rapor dosyası bulunamadı.")
+    else:
+        st.info("Henüz bir rapor oluşturulmadı.") 
+
+def trigger_open_file_wf(payload): # Open-file workflow tetikleme
+    try:
+        r = requests.post(
+            "http://localhost:5678/webhook/open-report-file", # n8n workflow tetikleme
+            json=payload,
+            timeout=10
+        )
+
+        r.raise_for_status()
+        data = r.json()
+
+        st.success(f"Dosya konumu {data["status"]}.")
+    except Exception as e:
+        st.error("Dosya konumu görüntülenemedi. Hata: " + str(e))
+
+def view_file(): # Dökümanı görüntüleme
+   if st.session_state.selected_row["report_name"]:
+        file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
+        if file_path:
+            if st.button(label="Dökümanı Görüntüle", 
+                         on_click=trigger_open_file_wf, 
+                         args=(file_path,),
+                         use_container_width=True):
+                st.session_state.viewed = True
+
+
+def trigger_send_email_wf(report_name, file_path, to_email): # Send-email workflow tetikleme
     try:
         payload = {
             "report_name": report_name,
@@ -361,7 +358,7 @@ def send_file_by_email(report_name, file_path, to_email): # E-posta göndermek i
         }
         
         r = requests.post(
-            "http://localhost:5678/webhook/send-file-by-email",
+            "http://localhost:5678/webhook/send-file-by-email", # n8n workflow tetikleme
             json=payload,
             timeout=10
         )
@@ -376,12 +373,12 @@ def send_file_by_email(report_name, file_path, to_email): # E-posta göndermek i
     except Exception as e:
         st.error("Mail gönderilemedi. Hata: " + str(e))
 
-def send_mail():
+def send_mail(): # E-posta gönderme
     if st.session_state.selected_row["report_name"]:
         file_path = fetch_latest_file_path(st.session_state.selected_row["report_name"])
         if file_path:
             if st.button(label="E-postayı Gönder",
-                         on_click=send_file_by_email,
+                         on_click=trigger_send_email_wf,
                          args=(st.session_state.selected_row["report_name"], 
                                file_path, 
                                st.session_state.user,),
@@ -394,11 +391,12 @@ def send_mail():
         st.info("Henüz bir rapor oluşturulmadı.")
 
 def report_panel(): # Üst panel
-    col1, col2 = st.columns([8, 1])
+    col1, col2 = st.columns([8, 2], gap="small")
     with col1:
         st.title("Rapor Paneli")
     with col2:
-        st.markdown("Kullanıcı : " + (st.session_state.user if st.session_state.logged_in else "Giriş Yapmadı"))
+        st.markdown("Aktif Kullanıcı : " + (st.session_state.user if st.session_state.logged_in else "--"))
+        do_logout()
 
 # Uygulama akışı
 report_panel()  
