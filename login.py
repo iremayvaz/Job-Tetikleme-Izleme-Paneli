@@ -119,14 +119,26 @@ def fetch_latest_file_path(report_name): # En sonki başarılı rapor dosyasın�
     conn.close()
     return df["file_path"].iloc[0] if not df.empty else None
 
-def seconds_to_hm(sec: int) -> str: # Veri tabanındaki run_time_seconds'ı saat ve dakikaya dönüştürmek için
-    if sec is None or sec <= 0:
-        return "0h 0m 0s"
-    else: 
-        h = sec // 3600 # 18432 / 3600 = 5 saat
-        m = (sec % 3600) // 60 # 18432 % 3600 = 432 saniye, 432 // 60 = 7 dakika
-        s = sec % 60 # 432 % 60 = 12 saniye
-        return f"{h}h {m}m {s}s"
+def seconds_to_hhmmss(sec: int) -> str: # Veri tabanındaki run_time_seconds'ı saat ve dakikaya dönüştürmek için
+    try:
+        sec = int(sec)
+
+        if sec <= 0: # sec is None or
+            return "00:00:00"  # Eğer süre yoksa veya negatifse, 00:00:00 döndürür
+        elif sec >= 3600: # Eğer süre 1 saatten fazlaysa
+            h = sec // 3600 # 18432 / 3600 = 5 saat
+            m = (sec % 3600) // 60 # 18432 % 3600 = 432 saniye, 432 // 60 = 7 dakika
+            s = sec % 60 # 432 % 60 = 12 saniye
+            return f"{h:02d}:{m:02d}:{s:02d}" # 05:07:12 formatında döndürür
+        elif sec >= 60 and sec < 3600: # Eğer süre 1 dakikadan fazlaysa
+            m = (sec % 3600) // 60 # 18432 % 3600 = 432 saniye, 432 // 60 = 7 dakika
+            s = sec % 60 # 432 % 60 = 12 saniye
+            return f"00:{m:02d}:{s:02d}" # 00:07:12 formatında döndürür
+        else: # Eğer süre 1 dakikadan azsa
+            return f"00:00:{sec:02d}" # 00:00:12 formatında döndürür
+    
+    except (TypeError, ValueError): # Eğer sec None veya geçersiz bir değer ise
+        return "--"
 
 def do_login():
     st.subheader("Giriş Yap")
@@ -200,7 +212,7 @@ def trigger_job():
         rep_def_df,
         gridOptions=grid_opts,
         height=500,
-        width=300,
+        width="%100",
         update_mode=GridUpdateMode.SELECTION_CHANGED, # kullanıcı satır seçtiğinde tekrar çalışır
         theme="alpine"
     )
@@ -298,45 +310,43 @@ def view_file():
 
 
 def see_log(report_name=None):
-    '''
-    #report_name = st.selectbox("Rapor Seçin", options=fetch_report_definitions()["report_name"].unique().tolist())
-    
-    if report_name:
-        log_df = fetch_report_execution_log_by_name(report_name)
-        if not log_df.empty:
-            st.write(log_df)
-        else:
-            st.info("Bu rapor için henüz bir log bulunmamaktadır.")
-    else:
-        st.info("Lütfen bir rapor seçin.")
-    '''
     log_df = fetch_report_execution_log_by_name(report_name)
-    if log_df.empty:
+
+    if log_df.empty: # Log kaydı yoksa
         st.info("Bu rapor için henüz bir log bulunmamaktadır.")
         return
+    
+    #  Reporting_date kolonu sonradan eklendiği için
+    #  NaT'leri boş string yapar
+    log_df["reporting_date"] = (
+        log_df["reporting_date"]
+          .dt.strftime("%d/%m/%Y %H:%M:%S")
+          .fillna("--")                        
+    ) 
 
-    # 2) GridOptionsBuilder ile kolon ayarlarını yap
+    # Okunabilirlik için süreyi
+    # hh:mm:ss formatına çevirir
+    log_df["run_time_seconds"] = log_df["run_time_seconds"].apply(seconds_to_hhmmss)
+
     gb = GridOptionsBuilder.from_dataframe(log_df)
-    # İstediğin kolon genişliklerini buradan ayarla:
+
     gb.configure_column("report_name",      header_name="Job",          minWidth=100, maxWidth=250)
     gb.configure_column("run_date",         header_name="Başl. T.",     minWidth=150, maxWidth=170)
     gb.configure_column("reporting_date",   header_name="Bitiş T.",     minWidth=150, maxWidth=170)
-    gb.configure_column("run_time_seconds", header_name="Süre",         minWidth=100, maxWidth=150)
-    gb.configure_column("run_status",       header_name="D.",           minWidth=70, maxWidth=80)
+    gb.configure_column("run_time_seconds", header_name="Süre",         minWidth=100, maxWidth=100)
+    gb.configure_column("run_status",       header_name="D.",           minWidth=70,  maxWidth=80)
     gb.configure_column("executed_by",      header_name="Çalıştıran",   minWidth=240, maxWidth=250)
     gb.configure_column("file_path",        header_name="Dosya Yolu",   minWidth=400, maxWidth=600)
-    # Sayfalama ekleyebilirsin:
+    
     gb.configure_pagination(paginationAutoPageSize=True)
-    # Seçim gibi bir özelliğe gerek yoksa pas geç:
     grid_options = gb.build()
 
-    # 3) AgGrid ile ekrana bas
     AgGrid(
         log_df,
         gridOptions=grid_options,
         theme="alpine",
         height=685,
-        width=500,
+        width="%100",
         fit_columns_on_grid_load=True,
         enable_enterprise_modules=False,
         update_mode=GridUpdateMode.NO_UPDATE,
@@ -383,10 +393,14 @@ def send_mail():
     else:
         st.info("Henüz bir rapor oluşturulmadı.")
 
-# Uygulama akışı
-def report_panel():
-    st.title("Rapor Paneli")
+def report_panel(): # Üst panel
+    col1, col2 = st.columns([8, 1])
+    with col1:
+        st.title("Rapor Paneli")
+    with col2:
+        st.markdown("Kullanıcı : " + (st.session_state.user if st.session_state.logged_in else "Giriş Yapmadı"))
 
+# Uygulama akışı
 report_panel()  
 st.markdown("---")
 
@@ -394,32 +408,25 @@ st.markdown("---")
 col1, col2 = st.columns([1, 1])
 
 if not st.session_state.logged_in: # Kullanıcı giriş yapmadıysa
-    with col1: # sayfanın solu
+    with col1: # sayfanın solu (Kullanıcı kayıt olma)
         do_register()
-    
-    with col2: # sayfanın sağı
+    with col2: # sayfanın sağı (Kullanıcı giriş yapma)
         do_login()
-
-else: # Kullanıcı giriş yaptıysa
-    
+else: # Kullanıcı giriş yaptıysa   
     # Sayfa bölünmesini güncelliyoruz
     col1, col2 = st.columns([2, 5])
 
     with col1: # sayfanın solu
         trigger_job()
-
+        # sayfanın solundaki rapor tablosunun altını 3'e bölüyoruz
+        # okunabilirlik için
         b1, b2, b3 = st.columns(3)
-
-        with b1:
+        with b1: # Dökümanı indirme
             download_file()
-        
-        with b2:
+        with b2: # Dökümanı görüntüleme
             view_file()
-        with b3:
+        with b3: # E-posta gönderme
             send_mail()
     
-    
-    with col2: # sayfanın sağıs
+    with col2: # sayfanın sağı (Seçilen Job'ın loglarını görüntüleme)
         see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
-        
-    
