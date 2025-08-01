@@ -9,8 +9,8 @@ import time
 
 st.set_page_config(
     page_title="Rapor Uygulaması",
-    layout="wide",                # <— işte geniş düzen
-    initial_sidebar_state="auto"  # isterseniz “expanded” da yapabilirsiniz
+    layout="wide",                
+    initial_sidebar_state="auto"  
 )
 
 # Session state ile login durumunu takip edin
@@ -64,6 +64,8 @@ def fetch_report_execution_log(): # Rapor loglarını çekmek için
         SELECT
         rep_def.report_name,
         rep_log.run_date,
+        rep_log.reporting_date,
+        rep_log.run_time_seconds,
         rep_log.run_status,
         rep_log.executed_by
         FROM dbo.ReportExecutionLog AS rep_log
@@ -82,6 +84,8 @@ def fetch_report_execution_log_by_name(report_name): # Rapor loglarını rapor a
         SELECT
         rep_def.report_name,
         rep_log.run_date,
+        rep_log.reporting_date,
+        rep_log.run_time_seconds,
         rep_log.run_status,
         rep_log.executed_by,
         rep_log.file_path
@@ -114,6 +118,15 @@ def fetch_latest_file_path(report_name): # En sonki başarılı rapor dosyasın�
     )
     conn.close()
     return df["file_path"].iloc[0] if not df.empty else None
+
+def seconds_to_hm(sec: int) -> str: # Veri tabanındaki run_time_seconds'ı saat ve dakikaya dönüştürmek için
+    if sec is None or sec <= 0:
+        return "0h 0m 0s"
+    else: 
+        h = sec // 3600 # 18432 / 3600 = 5 saat
+        m = (sec % 3600) // 60 # 18432 % 3600 = 432 saniye, 432 // 60 = 7 dakika
+        s = sec % 60 # 432 % 60 = 12 saniye
+        return f"{h}h {m}m {s}s"
 
 def do_login():
     st.subheader("Giriş Yap")
@@ -160,12 +173,12 @@ def do_register():
             res.raise_for_status()
             data = res.json()
             
-            if data.get("can") == "registered":
+            if data.get("status") == "kaydedildi":
                 st.success("Kayıt başarılı! Lütfen giriş yapın.")
-            elif data.get("can") == "GEÇERSİZ EMAIL":
+            elif data.get("status") == "geçersiz":
                 st.error("Lütfen geçerli bir e-posta adresi girin.")
             else:
-                st.error("Kayıt başarısız: " + data.get("can", "already registered"))
+                st.warning(email + data.get("status", "zaten kayıtlı"))
         except Exception as e:
             st.error(f"Kayıt hatası: {e}")
 
@@ -305,11 +318,13 @@ def see_log(report_name=None):
     # 2) GridOptionsBuilder ile kolon ayarlarını yap
     gb = GridOptionsBuilder.from_dataframe(log_df)
     # İstediğin kolon genişliklerini buradan ayarla:
-    gb.configure_column("report_name", header_name="Job",          width=100)
-    gb.configure_column("run_date",    header_name="Tarih",        width=150)
-    gb.configure_column("run_status",  header_name="Durum",        width=100)
-    gb.configure_column("executed_by", header_name="Çalıştıran",   minWidth=200, maxWidth=250)
-    gb.configure_column("file_path",   header_name="Dosya Yolu",   minWidth=400, maxWidth=600)
+    gb.configure_column("report_name",      header_name="Job",          minWidth=100, maxWidth=250)
+    gb.configure_column("run_date",         header_name="Başl. T.",     minWidth=150, maxWidth=170)
+    gb.configure_column("reporting_date",   header_name="Bitiş T.",     minWidth=150, maxWidth=170)
+    gb.configure_column("run_time_seconds", header_name="Süre",         minWidth=100, maxWidth=150)
+    gb.configure_column("run_status",       header_name="D.",           minWidth=70, maxWidth=80)
+    gb.configure_column("executed_by",      header_name="Çalıştıran",   minWidth=240, maxWidth=250)
+    gb.configure_column("file_path",        header_name="Dosya Yolu",   minWidth=400, maxWidth=600)
     # Sayfalama ekleyebilirsin:
     gb.configure_pagination(paginationAutoPageSize=True)
     # Seçim gibi bir özelliğe gerek yoksa pas geç:
@@ -388,9 +403,9 @@ if not st.session_state.logged_in: # Kullanıcı giriş yapmadıysa
 else: # Kullanıcı giriş yaptıysa
     
     # Sayfa bölünmesini güncelliyoruz
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns([2, 5])
 
-    with col1:
+    with col1: # sayfanın solu
         trigger_job()
 
         b1, b2, b3 = st.columns(3)
@@ -404,7 +419,7 @@ else: # Kullanıcı giriş yaptıysa
             send_mail()
     
     
-    with col2:
+    with col2: # sayfanın sağıs
         see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
         
     
