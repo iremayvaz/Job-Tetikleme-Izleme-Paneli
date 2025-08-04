@@ -40,6 +40,12 @@ if "downloaded" not in st.session_state:
 # Session state ile mail gönderilme durum takip
 if "was_send" not in st.session_state:
     st.session_state.was_send = False
+# Session state ile kayıt ol kısmı durum takip
+if "gonna_register" not in st.session_state: # Kullanıcı kayıt olmak istiyorsa
+    st.session_state.gonna_register = False
+# Session state ile kayıt ol kısmı durum takip
+if "gonna_login" not in st.session_state: # Kullanıcı kayıt olmak istiyorsa
+    st.session_state.gonna_login = True
 
 def get_connection(): # SQL Server’a doğrudan bağlanmak için
     return pymssql.connect( 
@@ -129,39 +135,48 @@ def do_login(): # Kullanıcı giriş
     email = st.text_input("E-posta", key="login_email")
     password = st.text_input("Şifre", type="password", key="login_password")
     
+    c1, c2 = st.columns([1, 1]) # İki sütun oluşturur, biri boş bırakılır
 
-    if st.button("Giriş Yap"):
-        payload = {"executed_by": email, 
-                   "password": password}
-        try:
-            res = requests.post("http://localhost:5678/webhook/login", # n8n workflow tetikleme
-                                json=payload, timeout=10)
+    with c1: # Sol sütun
+        if st.button(label="Giriş Yap", use_container_width=True):
+            payload = {"executed_by": email, 
+                       "password": password}
+            try:
+                res = requests.post("http://localhost:5678/webhook/login", # n8n workflow tetikleme
+                                    json=payload, timeout=10)
             
-            res.raise_for_status()
+                res.raise_for_status()
 
-            data = res.json()
-            stored_hashed_pass = data.get("hashed_pass")
+                data = res.json()
+                stored_hashed_pass = data.get("hashed_pass")
 
-            if stored_hashed_pass: # Eğer kullanıcı bulunduysa
-                if bcrypt.checkpw(password.encode("utf-8"), 
-                                  stored_hashed_pass.encode("utf-8")): # Şifre kontrolü
-                    st.session_state.logged_in = True
-                    st.session_state.user = data["user"]
-                    st.success("Giriş başarılı! Hoş geldin, " + data["user"])
-                    time.sleep(0.5) # Giriş başarılı mesajını göstermek için kısa bir bekleme
-                    st.rerun()
-                else: # Şifre yanlışsa
-                    st.error(data["user"] + " için hatalı şifre. Lütfen tekrar deneyin.")
-            else:
-                st.warning("Kullanıcı bulunamadı. Lütfen önce kayıt olun.")
+                if stored_hashed_pass: # Eğer kullanıcı bulunduysa
+                    if bcrypt.checkpw(password.encode("utf-8"), 
+                                      stored_hashed_pass.encode("utf-8")): # Şifre kontrolü
+                        st.session_state.logged_in = True
+                        st.session_state.user = data["user"]
+                        st.success("Giriş başarılı! Hoş geldin, " + data["user"])
+                        time.sleep(0.5) # Giriş başarılı mesajını göstermek için kısa bir bekleme
+                        st.rerun()
+                    else: # Şifre yanlışsa
+                        st.error(data["user"] + " için hatalı şifre. Lütfen tekrar deneyin.")
+                else:
+                    st.warning("Kullanıcı bulunamadı. Lütfen önce kayıt olun.")
             
-        except Exception as e:
-            st.error(f"Giriş hatası: {e}")
+            except Exception as e:
+                st.error(f"Giriş hatası: {e}")
+    with c2: # Sağ sütun
+        if st.button(label="Kayıt Ol", key="register", use_container_width=True):
+            st.session_state.gonna_register = True
+            st.session_state.gonna_login = False
+            st.warning("Kayıt sayfasına yönlendiriliyorsunuz...")
+            time.sleep(0.5) # Kayıt sayfasına yönlendirme mesajını göstermek için kısa bir bekleme
+            st.rerun()
 
 def do_register(): # Yeni kullanıcı kayıt
     st.subheader("Kayıt Ol")
     
-    email = st.text_input("E-posta", key="reg_email")
+    email = st.text_input("E-posta", key="reg_email", )
     password = st.text_input("Şifre", type="password", key="reg_password")
     unvan = st.text_input("Unvan (isim/pozisyon)", key="reg_unvan")
 
@@ -169,7 +184,7 @@ def do_register(): # Yeni kullanıcı kayıt
                                     bcrypt.gensalt() # Rastgele bir salt oluşturur (aynı şifreye sahip kullanıcılar için farklı hash'ler üretir)
                                     ).decode("utf-8")
     
-    if st.button("Kayıt Ol"):
+    if st.button(label="Kayıt Ol", key="register_button", use_container_width=True):
         payload = {"executed_by": email, 
                    "password": hashed_password, 
                    "position": unvan}
@@ -182,16 +197,19 @@ def do_register(): # Yeni kullanıcı kayıt
             data = res.json()
             
             if data.get("status") == "kaydedildi":
+                st.session_state.gonna_register = False
                 st.success("Kayıt başarılı! Lütfen giriş yapın.")
+                time.sleep(0.5)
+                st.rerun()
             elif data.get("status") == "geçersiz":
                 st.error("Lütfen geçerli bir e-posta adresi girin.")
             else:
-                st.warning(email + data.get("status", "zaten kayıtlı"))
+                st.warning(email + " " + data.get("status", "zaten kayıtlı"))
         except Exception as e:
             st.error(f"Kayıt hatası: {e}")
 
 def do_logout(): # Kullanıcı çıkış
-    if st.button("Çıkış Yap"):
+    if st.button(label="Çıkış Yap", use_container_width=True):
         st.session_state.clear() # Tüm session state değerlerini temizler
         st.success("Çıkış başarılı! Yeniden giriş yapabilirsiniz.")
         time.sleep(0.5) # Çıkış başarılı mesajını göstermek için kısa bir bekleme
@@ -409,20 +427,22 @@ def report_panel(): # Üst panel
         st.title("Rapor Paneli")
     with col2:
         st.markdown("Aktif Kullanıcı : " + (st.session_state.user if st.session_state.logged_in else "--"))
-        do_logout()
+        if st.session_state.logged_in: # Kullanıcı giriş yaptıysa
+            do_logout()
 
 # Uygulama akışı
 report_panel()  
 st.markdown("---")
 
 # Sayfayı iki eşit sütuna bölüyoruz
-col1, col2 = st.columns([1, 1])
+col1, col2, col3 = st.columns(3)
 
 if not st.session_state.logged_in: # Kullanıcı giriş yapmadıysa
-    with col1: # sayfanın solu (Kullanıcı kayıt olma)
-        do_register()
-    with col2: # sayfanın sağı (Kullanıcı giriş yapma)
-        do_login()
+    with col2: 
+        if st.session_state.get("gonna_register", True): # Kullanıcı kayıt olmak istiyorsa
+            do_register()
+        else: 
+            do_login()
 else: # Kullanıcı giriş yaptıysa   
     # Sayfa bölünmesini güncelliyoruz
     col1, col2 = st.columns([2, 5])
