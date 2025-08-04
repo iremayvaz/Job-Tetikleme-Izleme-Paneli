@@ -6,6 +6,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from pathlib import Path
 from datetime import datetime
 import time
+import bcrypt
 
 st.set_page_config( # Genel sayfa düzeni 
     page_title="Rapor Uygulaması",
@@ -128,25 +129,32 @@ def do_login(): # Kullanıcı giriş
     email = st.text_input("E-posta", key="login_email")
     password = st.text_input("Şifre", type="password", key="login_password")
     
+
     if st.button("Giriş Yap"):
         payload = {"executed_by": email, 
                    "password": password}
         try:
             res = requests.post("http://localhost:5678/webhook/login", # n8n workflow tetikleme
                                 json=payload, timeout=10)
-            res.raise_for_status()
-            data = res.json()
             
-            if data.get("canLogin") == "can":
-                st.session_state.logged_in = True
-                st.session_state.user = data["user"]
-                st.success("Giriş başarılı! Hoş geldin, " + data["user"])
-                time.sleep(0.5) # Giriş başarılı mesajını göstermek için kısa bir bekleme
-                st.rerun()
-            elif data.get("canLogin") == "wrong password":
-                st.error( data["user"] + " için hatalı şifre. Lütfen tekrar deneyin.")
+            res.raise_for_status()
+
+            data = res.json()
+            stored_hashed_pass = data.get("hashed_pass")
+
+            if stored_hashed_pass: # Eğer kullanıcı bulunduysa
+                if bcrypt.checkpw(password.encode("utf-8"), 
+                                  stored_hashed_pass.encode("utf-8")): # Şifre kontrolü
+                    st.session_state.logged_in = True
+                    st.session_state.user = data["user"]
+                    st.success("Giriş başarılı! Hoş geldin, " + data["user"])
+                    time.sleep(0.5) # Giriş başarılı mesajını göstermek için kısa bir bekleme
+                    st.rerun()
+                else: # Şifre yanlışsa
+                    st.error(data["user"] + " için hatalı şifre. Lütfen tekrar deneyin.")
             else:
                 st.warning("Kullanıcı bulunamadı. Lütfen önce kayıt olun.")
+            
         except Exception as e:
             st.error(f"Giriş hatası: {e}")
 
@@ -156,15 +164,21 @@ def do_register(): # Yeni kullanıcı kayıt
     email = st.text_input("E-posta", key="reg_email")
     password = st.text_input("Şifre", type="password", key="reg_password")
     unvan = st.text_input("Unvan (isim/pozisyon)", key="reg_unvan")
+
+    hashed_password = bcrypt.hashpw(password.encode("utf-8"), 
+                                    bcrypt.gensalt() # Rastgele bir salt oluşturur (aynı şifreye sahip kullanıcılar için farklı hash'ler üretir)
+                                    ).decode("utf-8")
     
     if st.button("Kayıt Ol"):
         payload = {"executed_by": email, 
-                   "password": password, 
+                   "password": hashed_password, 
                    "position": unvan}
         try:
             res = requests.post("http://localhost:5678/webhook/register", # n8n workflow tetikleme
                                 json=payload, timeout=10)
+            
             res.raise_for_status()
+            
             data = res.json()
             
             if data.get("status") == "kaydedildi":
