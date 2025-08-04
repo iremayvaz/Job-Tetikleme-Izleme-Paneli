@@ -43,9 +43,6 @@ if "was_send" not in st.session_state:
 # Session state ile kayıt ol kısmı durum takip
 if "gonna_register" not in st.session_state: # Kullanıcı kayıt olmak istiyorsa
     st.session_state.gonna_register = False
-# Session state ile kayıt ol kısmı durum takip
-if "gonna_login" not in st.session_state: # Kullanıcı kayıt olmak istiyorsa
-    st.session_state.gonna_login = True
 
 def get_connection(): # SQL Server’a doğrudan bağlanmak için
     return pymssql.connect( 
@@ -168,7 +165,6 @@ def do_login(): # Kullanıcı giriş
     with c2: # Sağ sütun
         if st.button(label="Kayıt Ol", key="register", use_container_width=True):
             st.session_state.gonna_register = True
-            st.session_state.gonna_login = False
             st.warning("Kayıt sayfasına yönlendiriliyorsunuz...")
             time.sleep(0.5) # Kayıt sayfasına yönlendirme mesajını göstermek için kısa bir bekleme
             st.rerun()
@@ -183,30 +179,38 @@ def do_register(): # Yeni kullanıcı kayıt
     hashed_password = bcrypt.hashpw(password.encode("utf-8"), 
                                     bcrypt.gensalt() # Rastgele bir salt oluşturur (aynı şifreye sahip kullanıcılar için farklı hash'ler üretir)
                                     ).decode("utf-8")
+    c1, c2 = st.columns([1, 1]) # İki sütun oluşturur, biri boş bırakılır
     
-    if st.button(label="Kayıt Ol", key="register_button", use_container_width=True):
-        payload = {"executed_by": email, 
-                   "password": hashed_password, 
-                   "position": unvan}
-        try:
-            res = requests.post("http://localhost:5678/webhook/register", # n8n workflow tetikleme
-                                json=payload, timeout=10)
+    with c1: # Sol sütun
+        if st.button(label="Kayıt Ol", key="register_button", use_container_width=True):
+            payload = {"executed_by": email, 
+                       "password": hashed_password, 
+                       "position": unvan}
+            try:
+                res = requests.post("http://localhost:5678/webhook/register", # n8n workflow tetikleme
+                                    json=payload, timeout=10)
             
-            res.raise_for_status()
+                res.raise_for_status()
             
-            data = res.json()
-            
-            if data.get("status") == "kaydedildi":
-                st.session_state.gonna_register = False
-                st.success("Kayıt başarılı! Lütfen giriş yapın.")
-                time.sleep(0.5)
-                st.rerun()
-            elif data.get("status") == "geçersiz":
-                st.error("Lütfen geçerli bir e-posta adresi girin.")
-            else:
-                st.warning(email + " " + data.get("status", "zaten kayıtlı"))
-        except Exception as e:
-            st.error(f"Kayıt hatası: {e}")
+                data = res.json()
+
+                if data.get("status") == "kaydedildi":
+                    st.session_state.gonna_register = False
+                    st.success("Kayıt başarılı! Lütfen giriş yapın.")
+                    time.sleep(0.5)
+                    st.rerun()
+                elif data.get("status") == "geçersiz":
+                    st.error("Lütfen geçerli bir e-posta adresi girin.")
+                else:
+                    st.warning(email + " " + data.get("status", "zaten kayıtlı"))
+            except Exception as e:
+                st.error(f"Kayıt hatası: {e}")
+    with c2: # Sağ sütun
+        if st.button(label="Giriş Sayfasına Dön", key="back_to_login", use_container_width=True):
+            st.session_state.gonna_register = False
+            st.warning("Giriş sayfasına yönlendiriliyorsunuz...")
+            time.sleep(0.5) # Giriş sayfasına yönlendirme mesajını göstermek için kısa bir bekleme
+            st.rerun()
 
 def do_logout(): # Kullanıcı çıkış
     if st.button(label="Çıkış Yap", use_container_width=True):
@@ -426,8 +430,8 @@ def report_panel(): # Üst panel
     with col1:
         st.title("Rapor Paneli")
     with col2:
-        st.markdown("Aktif Kullanıcı : " + (st.session_state.user if st.session_state.logged_in else "--"))
         if st.session_state.logged_in: # Kullanıcı giriş yaptıysa
+            st.markdown("Aktif Kullanıcı : " + (st.session_state.user if st.session_state.logged_in else "--"))
             do_logout()
 
 # Uygulama akışı
