@@ -43,6 +43,12 @@ if "was_send" not in st.session_state:
 # Session state ile kayıt ol kısmı durum takip
 if "gonna_register" not in st.session_state: # Kullanıcı kayıt olmak istiyorsa
     st.session_state.gonna_register = False
+# Session state ile şifre sıfırlama isteği takip
+if "gonna_forgot" not in st.session_state:
+    st.session_state.gonna_forgot = False
+if "reset_token" not in st.session_state:
+    st.session_state.reset_token = None
+
 
 def get_connection(): # SQL Server’a doğrudan bağlanmak için
     return pymssql.connect( 
