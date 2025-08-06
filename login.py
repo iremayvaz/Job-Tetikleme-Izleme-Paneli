@@ -49,7 +49,7 @@ if "gonna_forgot" not in st.session_state:
 if "reset_token" not in st.session_state:
     st.session_state.reset_token = None
 
-
+### DATABASE CONNECTION FUNCTIONS ###
 def get_connection(): # SQL Server’a doğrudan bağlanmak için
     return pymssql.connect( 
     server='localhost',
@@ -113,8 +113,10 @@ def fetch_latest_file_path(report_name): # En sonki başarılı rapor dosyasın�
     conn.close()
     return df["file_path"].iloc[0] if not df.empty else None
 
+### WEB-PANEL FUNCTIONS ###
 def seconds_to_hhmmss(sec: int) -> str: # Veri tabanındaki run_time_seconds'ı saat ve dakikaya dönüştürmek için
     try:
+        sec = int(sec) # sec'i int'e çevirir. type error veriyordu if-else'de hata alıyordu
         if sec <= 0: # Eğer süre 0 veya negatifse, 00:00:00 döndürür
             return "00:00:00" 
         elif sec >= 3600: # Eğer süre 1 saatten fazlaysa
@@ -218,12 +220,33 @@ def do_register(): # Yeni kullanıcı kayıt
             time.sleep(0.5) # Giriş sayfasına yönlendirme mesajını göstermek için kısa bir bekleme
             st.rerun()
 
-def do_logout(): # Kullanıcı çıkış
+def do_logout(): # Oturumu kapatma
     if st.button(label="Çıkış Yap", use_container_width=True):
         st.session_state.clear() # Tüm session state değerlerini temizler
         st.success("Çıkış başarılı! Yeniden giriş yapabilirsiniz.")
         time.sleep(0.5) # Çıkış başarılı mesajını göstermek için kısa bir bekleme
         st.rerun()
+
+def do_forgot_password(): # Şifre sıfırlama isteği
+    email = st.text_input("E-posta", key="forgot_email")
+
+    if st.button(label="Şifremi Unuttum", use_container_width=True):
+        payload = {"executed_by": email}
+        try:
+            res = requests.post("http://localhost:5678/webhook/forgot-password", # n8n workflow tetikleme
+                                json=payload, timeout=10)
+            
+            res.raise_for_status()
+            data = res.json()
+
+            if data.get("status") == "gönderildi":
+                st.session_state.gonna_forgot = True
+                st.session_state.reset_token = data.get("reset_token")
+                st.success("Şifre sıfırlama talebi başarılı! Lütfen e-postanızı kontrol edin.")
+            else:
+                st.error(data.get("message", "Şifre sıfırlama isteği başarısız."))
+        except Exception as e:
+            st.error(f"Şifre sıfırlama hatası: {e}")
 
 def trigger_job(): # Job tetikleme
     rep_def_df = fetch_report_definitions()
@@ -288,7 +311,7 @@ def trigger_job(): # Job tetikleme
             
                 try:
                     res = requests.post("http://localhost:5678/webhook/trigger-job", # n8n workflow tetikleme
-                                        json=report_payload, timeout=10)
+                                        json=report_payload, timeout=(10, 3000))
                     res.raise_for_status()
                     data = res.json()
             
