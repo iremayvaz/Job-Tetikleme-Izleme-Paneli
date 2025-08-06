@@ -494,3 +494,11 @@ else: # Kullanıcı giriş yaptıysa
     
     with col2: # sayfanın sağı (Seçilen Job'ın loglarını görüntüleme)
         see_log(st.session_state.selected_row["report_name"] if st.session_state.selected_row is not None else None)
+        
+        st.markdown( # ReportExecutionLog tablosunun altına bilgi mesajı (HTML ile en sağa hizalama)
+                "<p style='text-align: right; color: gray; margin-top: 0;'>"
+                "D. 0 : Başarısız, D. 1 : Başarılı, D. 4 : Devam ediyor"
+                "</p>",
+                unsafe_allow_html=True,
+            )
+
