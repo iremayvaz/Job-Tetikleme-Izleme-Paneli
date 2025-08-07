@@ -43,11 +43,9 @@ if "was_send" not in st.session_state:
 # Session state ile kayıt ol kısmı durum takip
 if "gonna_register" not in st.session_state: # Kullanıcı kayıt olmak istiyorsa
     st.session_state.gonna_register = False
-# Session state ile şifre sıfırlama isteği takip
-if "gonna_forgot" not in st.session_state:
-    st.session_state.gonna_forgot = False
-if "reset_token" not in st.session_state:
-    st.session_state.reset_token = None
+# Session state ile şifre sıfırlama takip
+if "reset_password" not in st.session_state:
+    st.session_state.reset_password = False
 
 ### DATABASE CONNECTION FUNCTIONS ###
 def get_connection(): # SQL Server’a doğrudan bağlanmak için
@@ -170,6 +168,12 @@ def do_login(): # Kullanıcı giriş
             
             except Exception as e:
                 st.error(f"Giriş hatası: {e}")
+            
+        if st.button(label="Şifremi Unuttum", key="to_reset", use_container_width=True):
+            st.session_state.reset_password = True
+            st.warning("Şifre sıfırlama sayfasına yönlendiriliyorsunuz...")
+            time.sleep(0.5) # Şifre sıfırlama sayfasına yönlendirme mesajını göstermek için kısa bir bekleme
+            st.rerun()
     with c2: # Sağ sütun
         if st.button(label="Kayıt Ol", key="register", use_container_width=True):
             st.session_state.gonna_register = True
@@ -227,26 +231,36 @@ def do_logout(): # Oturumu kapatma
         time.sleep(0.5) # Çıkış başarılı mesajını göstermek için kısa bir bekleme
         st.rerun()
 
-def do_forgot_password(): # Şifre sıfırlama isteği
+def do_reset_password(): # Şifre sıfırlama isteği
     email = st.text_input("E-posta", key="forgot_email")
 
-    if st.button(label="Şifremi Unuttum", use_container_width=True):
-        payload = {"executed_by": email}
-        try:
-            res = requests.post("http://localhost:5678/webhook/forgot-password", # n8n workflow tetikleme
-                                json=payload, timeout=10)
+    c1, c2 = st.columns([1, 1]) # İki sütun oluşturur, biri boş bırakılır
+    
+    with c1: # Sol sütun
+        if st.button(label="Şifremi Unuttum", key="reset", use_container_width=True):
+            payload = {"executed_by": email}
+            try:
+                res = requests.post("http://localhost:5678/webhook/reset-password", # n8n workflow tetikleme
+                                    json=payload, timeout=10)
             
-            res.raise_for_status()
-            data = res.json()
+                res.raise_for_status()
+                data = res.json()
 
-            if data.get("status") == "gönderildi":
-                st.session_state.gonna_forgot = True
-                st.session_state.reset_token = data.get("reset_token")
-                st.success("Şifre sıfırlama talebi başarılı! Lütfen e-postanızı kontrol edin.")
-            else:
-                st.error(data.get("message", "Şifre sıfırlama isteği başarısız."))
-        except Exception as e:
-            st.error(f"Şifre sıfırlama hatası: {e}")
+                if data.get("status") == "gönderildi":
+                    st.session_state.reset_password = False
+                    st.success("Şifre sıfırlama talebi başarılı! Yeni şifreniz için lütfen e-postanızı kontrol edin.")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(data.get("status", "Şifre sıfırlama isteği başarısız."))
+            except Exception as e:
+                st.error(f"Şifre sıfırlama hatası: {e}")
+    with c2: # Sağ sütun,
+        if st.button(label="Giriş Sayfasına Dön", key="back_to_login", use_container_width=True):
+            st.session_state.reset_password = False
+            st.warning("Giriş sayfasına yönlendiriliyorsunuz...")
+            time.sleep(0.5) # Giriş sayfasına yönlendirme mesajını göstermek için kısa bir bekleme
+            st.rerun()
 
 def trigger_job(): # Job tetikleme
     rep_def_df = fetch_report_definitions()
@@ -474,8 +488,11 @@ if not st.session_state.logged_in: # Kullanıcı giriş yapmadıysa
     with col2: 
         if st.session_state.get("gonna_register", True): # Kullanıcı kayıt olmak istiyorsa
             do_register()
+        elif st.session_state.get("reset_password", True): # Kullanıcı şifresini unuttuysa
+            do_reset_password()
         else: 
             do_login()
+            
 else: # Kullanıcı giriş yaptıysa   
     # Sayfa bölünmesini güncelliyoruz
     col1, col2 = st.columns([2, 5])
